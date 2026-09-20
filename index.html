@@ -119,15 +119,16 @@ const PHASES=[
   {key:'F3',name:'Fase 3 · Simulasi rumah',until:'2027-01-12'},
   {key:'R', name:'Home gym',until:'9999-12-31'}
 ];
-// type: db2 = kg per dumbbell (sepasang), db1 = satu dumbbell, kb = kettlebell, machine = angka di mesin, bw = beban tubuh (+beban tambahan)
+// type: db2 = kg per dumbbell (sepasang), db1 = satu dumbbell, kb = kettlebell, machine = angka di mesin (kg), bar = angka pin di mesin gym AnNie (satuan tidak diketahui dalam kg), bw = beban tubuh (+beban tambahan)
+// knee = logika "tahan beban" kalau nyeri lutut AnNie >3/10. capReps = batas repetisi keras per set khusus pola squat/lunge dalam.
 const EX={
-  goblet:{name:'Goblet squat ke bench',type:'db1',unit:'reps',knee:true,cue:'Turun sampai duduk menyentuh bench, lalu berdiri. AnNie: boleh diganti seated leg press di minggu 1–2.'},
+  goblet:{name:'Goblet squat ke bench',type:'db1',unit:'reps',knee:true,capReps:10,cue:'Turun sampai duduk menyentuh bench, lalu berdiri.'},
   rdl:{name:'Romanian deadlift (dumbbell)',type:'db2',unit:'reps',cue:'Pinggul mendorong ke belakang, punggung lurus, lutut sedikit tekuk dan tetap.'},
   chestm:{name:'Chest press (mesin plate-loaded)',type:'machine',unit:'reps',cue:'Beban = angka total pelat di mesin.'},
   pulldown:{name:'Lat pulldown',type:'machine',unit:'reps',cue:'Tarik ke dada atas, bahu turun.'},
-  hipabd:{name:'Hip abduction (mesin)',type:'machine',unit:'reps',cue:'Prioritas untuk AnNie: penguatan pinggul membantu lutut.'},
+  hipabd:{name:'Hip abduction (mesin)',type:'machine',unit:'reps',cue:'Beban = angka total pelat di mesin.'},
   farmer_m:{name:'Farmer’s carry',type:'db2',unit:'m',cue:'Dumbbell di kedua tangan, jalan tegak.'},
-  split:{name:'Split squat statis',type:'db2',unit:'reps',knee:true,perSide:true,cue:'Kaki depan-belakang, tidak melangkah. Pegangan bila perlu. AnNie mulai tanpa beban (isi 0).'},
+  split:{name:'Split squat statis',type:'db2',unit:'reps',knee:true,capReps:10,perSide:true,cue:'Kaki depan-belakang, tidak melangkah. Pegangan bila perlu. AnNie mulai tanpa beban (isi 0).'},
   thrust:{name:'Hip thrust / glute bridge di bench',type:'db1',unit:'reps',cue:'Dumbbell di pinggul, dorong sampai pinggul lurus.'},
   ohp:{name:'Shoulder press duduk (dumbbell)',type:'db2',unit:'reps',cue:'Sandaran bench tegak.'},
   row1:{name:'One-arm dumbbell row',type:'db1',unit:'reps',perSide:true,cue:'Satu tangan dan lutut di bench.'},
@@ -139,25 +140,36 @@ const EX={
   sideabd:{name:'Side-lying hip abduction / clamshell',type:'bw',unit:'reps',perSide:true,cue:'Tanpa alat.'},
   farmer_s:{name:'Farmer’s carry',type:'db2',unit:'s',cue:'Bolak-balik di ruangan.'},
   suitcase_s:{name:'Suitcase carry',type:'db1',unit:'s',perSide:true,cue:'Satu tangan, badan tetap tegak.'},
-  plank:{name:'Plank / dead bug',type:'bw',unit:'s',cue:'Dead bug: hitung detik total per set.'}
+  plank:{name:'Plank / dead bug',type:'bw',unit:'s',cue:'Dead bug: hitung detik total per set.'},
+  legpress_i:{name:'Leg press (mesin)',type:'bar',unit:'reps',knee:true,cue:'Rutinitas lama AnNie. 1 set pemanasan ringan dulu (tidak perlu dicatat), lalu catat 2 set kerja di bawah sampai sisa tenaga 2–3 repetisi.'},
+  legext_i:{name:'Leg extension (mesin)',type:'bar',unit:'reps',knee:true,cue:'Turunkan pelan-pelan, jangan hentak. 1 set pemanasan dulu (tidak dicatat), lalu 2 set kerja.'},
+  legcurl_i:{name:'Leg curl (mesin)',type:'bar',unit:'reps',knee:true,cue:'1 set pemanasan dulu (tidak dicatat), lalu 2 set kerja.'},
+  hipabd_i:{name:'Hip abduction (mesin)',type:'bar',unit:'reps',knee:true,cue:'1 set pemanasan dulu (tidak dicatat), lalu 2 set kerja.'},
+  hipadd_i:{name:'Hip adduction (mesin)',type:'bar',unit:'reps',knee:true,cue:'1 set pemanasan dulu (tidak dicatat), lalu 2 set kerja.'}
 };
-// rx(sets, [lo,hi] JuAn, [lo,hi] AnNie, istirahat JuAn, istirahat AnNie, only)
-const rx=(id,sets,t,i,rt=90,ri=90,only)=>({id,sets,range:{tyo:t,istri:i},rest:{tyo:rt,istri:ri},only});
-const UP=[8,15]; // aturan tubuh atas AnNie
-const HOME_A=[rx('goblet',3,[8,10],[8,10],90,120),rx('rdl',3,[8,10],[8,10]),rx('bench',3,[8,12],UP),rx('csrow',3,[10,12],UP),rx('sideabd',2,[12,15],[12,15],45,45),rx('farmer_s',3,[30,40],[30,40],60,60)];
-const HOME_B=[rx('split',3,[6,10],[6,10],90,120),rx('thrust',3,[10,12],[10,12],90,90,'tyo'),rx('kbdl',3,[8,12],[8,12],90,90,'istri'),rx('ohp',3,[8,10],UP),rx('row1',3,[8,12],UP),rx('plank',2,[30,45],[30,45],45,45),rx('suitcase_s',2,[30,40],[30,40],60,60)];
+// rx1(id, jumlah set kerja yang dicatat, [lo,hi] repetisi, istirahat detik)
+const rx1=(id,sets,range,rest)=>({id,sets,range,rest});
+const UP=[8,15]; // aturan tubuh atas AnNie (rentang lebih lebar)
+const HOME_TYO_A=[rx1('goblet',3,[8,10],90),rx1('rdl',3,[8,10],90),rx1('bench',3,[8,12],90),rx1('csrow',3,[10,12],90),rx1('sideabd',2,[12,15],45),rx1('farmer_s',3,[30,40],60)];
+const HOME_ISTRI_A=[rx1('goblet',3,[8,10],120),rx1('rdl',3,[8,10],90),rx1('bench',3,UP,90),rx1('csrow',3,UP,90),rx1('sideabd',2,[12,15],45),rx1('farmer_s',3,[30,40],60)];
+const HOME_TYO_B=[rx1('split',3,[6,10],90),rx1('thrust',3,[10,12],90),rx1('ohp',3,[8,10],90),rx1('row1',3,[8,12],90),rx1('plank',2,[30,45],45),rx1('suitcase_s',2,[30,40],60)];
+const HOME_ISTRI_B=[rx1('split',3,[6,10],120),rx1('kbdl',3,[8,12],90),rx1('ohp',3,UP,90),rx1('row1',3,UP,90),rx1('plank',2,[30,45],45),rx1('suitcase_s',2,[30,40],60)];
 const PLAN={
-  F1:{A:[rx('goblet',3,[8,10],[8,10],90,120),rx('rdl',3,[8,10],[8,10]),rx('chestm',3,[8,12],UP),rx('pulldown',3,[10,12],UP),rx('hipabd',2,[12,15],[12,15],60,60),rx('farmer_m',3,[20,30],[20,30],60,60)],
-      B:[rx('split',3,[6,10],[6,10],90,120),rx('thrust',3,[10,12],[10,12]),rx('ohp',3,[8,10],UP),rx('row1',3,[8,12],UP),rx('legcurl',2,[10,15],[10,15],60,60),rx('suitcase_m',2,[20,30],[20,30],60,60)]},
-  F2:{A:[rx('goblet',3,[8,10],[8,10],90,120),rx('rdl',3,[8,10],[8,10]),rx('bench',3,[8,12],UP),rx('pulldown',3,[10,12],UP),rx('csrow',3,[10,12],UP),rx('hipabd',2,[12,15],[12,15],60,60),rx('farmer_m',3,[20,30],[20,30],60,60)],
-      B:[rx('split',3,[6,10],[6,10],90,120),rx('kbdl',3,[8,12],[8,12]),rx('ohp',3,[8,10],UP),rx('row1',3,[8,12],UP),rx('suitcase_m',2,[20,30],[20,30],60,60)]},
-  F3:{A:HOME_A,B:HOME_B},
-  R:{A:HOME_A,B:HOME_B}
+  F1:{tyo:{A:[rx1('goblet',3,[8,10],90),rx1('rdl',3,[8,10],90),rx1('chestm',3,[8,12],90),rx1('pulldown',3,[10,12],90),rx1('hipabd',2,[12,15],60),rx1('farmer_m',3,[20,30],60)],
+           B:[rx1('split',3,[6,10],90),rx1('thrust',3,[10,12],90),rx1('ohp',3,[8,10],90),rx1('row1',3,[8,12],90),rx1('legcurl',2,[10,15],60),rx1('suitcase_m',2,[20,30],60)]},
+      istri:{A:[rx1('legpress_i',2,[8,15],120),rx1('legext_i',2,[8,15],90),rx1('hipabd_i',2,[10,15],60),rx1('chestm',3,UP,90),rx1('pulldown',3,UP,90),rx1('farmer_m',3,[20,30],60)],
+             B:[rx1('legcurl_i',2,[8,15],90),rx1('hipadd_i',2,[10,15],60),rx1('goblet',2,[8,10],120),rx1('ohp',3,UP,90),rx1('row1',3,UP,90),rx1('plank',2,[30,45],45)]}},
+  F2:{tyo:{A:[rx1('goblet',3,[8,10],90),rx1('rdl',3,[8,10],90),rx1('bench',3,[8,12],90),rx1('pulldown',3,[10,12],90),rx1('csrow',3,[10,12],90),rx1('hipabd',2,[12,15],60),rx1('farmer_m',3,[20,30],60)],
+           B:[rx1('split',3,[6,10],90),rx1('kbdl',3,[8,12],90),rx1('ohp',3,[8,10],90),rx1('row1',3,[8,12],90),rx1('suitcase_m',2,[20,30],60)]},
+      istri:{A:[rx1('legpress_i',2,[8,15],120),rx1('legext_i',2,[8,15],90),rx1('hipabd_i',2,[10,15],60),rx1('goblet',2,[8,10],120),rx1('chestm',3,UP,90),rx1('pulldown',3,UP,90),rx1('farmer_m',3,[20,30],60)],
+             B:[rx1('legcurl_i',2,[8,15],90),rx1('hipadd_i',2,[10,15],60),rx1('ohp',3,UP,90),rx1('row1',3,UP,90),rx1('plank',2,[30,45],45)]}},
+  F3:{tyo:{A:HOME_TYO_A,B:HOME_TYO_B},istri:{A:HOME_ISTRI_A,B:HOME_ISTRI_B}},
+  R:{tyo:{A:HOME_TYO_A,B:HOME_TYO_B},istri:{A:HOME_ISTRI_A,B:HOME_ISTRI_B}}
 };
-const INC={db1:2.5,db2:2.5,kb:4,machine:2.5,bw:0};
-const STEP={db1:1,db2:1,kb:2,machine:2.5,bw:1};
+const INC={db1:2.5,db2:2.5,kb:4,machine:2.5,bar:1,bw:0};
+const STEP={db1:1,db2:1,kb:2,machine:2.5,bar:1,bw:1};
 const UNIT={reps:'rep',m:'m',s:'dtk'};
-const LOAD_LABEL={db2:'kg / dumbbell',db1:'kg',kb:'kg',machine:'kg (mesin)',bw:'kg tambahan'};
+const LOAD_LABEL={db2:'kg / dumbbell',db1:'kg',kb:'kg',machine:'kg (mesin)',bar:'bar (angka pin mesin)',bw:'kg tambahan'};
 
 /* ================= Penyimpanan ================= */
 const KEY='logLatihan.v1';
@@ -196,7 +208,7 @@ function getOrCreate(date,person,sess){
 function planFor(date,sess,person){
   const s=findSession(date,person,sess);
   const ph=s?s.phase:phaseOf(date).key;
-  return PLAN[ph][sess].filter(it=>!it.only||it.only===person);
+  return PLAN[ph][person][sess];
 }
 function lastEntry(person,exId,beforeDate){
   const list=db.sessions.filter(s=>s.person===person&&s.date<beforeDate&&s.entries[exId]&&s.entries[exId].length).sort((a,b)=>a.date<b.date?1:-1);
@@ -210,7 +222,7 @@ function lastIstriPain(beforeDate){
 
 /* ================= Progresi ganda ================= */
 function suggest(it,person,date){
-  const ex=EX[it.id],[lo,hi]=it.range[person],last=lastEntry(person,it.id,date),inc=INC[ex.type];
+  const ex=EX[it.id],[lo,hi]=it.range,last=lastEntry(person,it.id,date),inc=INC[ex.type];
   if(!last)return{w:null,r:lo,hold:false,text:`Belum ada catatan. Cari beban yang terasa berat tapi rapi di ${lo} ${UNIT[ex.unit]}, sisakan tenaga 2–3 ${UNIT[ex.unit]}.`};
   const top=Math.max(...last.sets.map(s=>s.w));
   const atTop=last.sets.filter(s=>s.w===top);
@@ -299,28 +311,31 @@ function renderLog(){
       <div class="row" style="margin-top:6px"><select id="missPain" aria-label="Skor nyeri keesokan hari">${Array.from({length:11},(_,i)=>`<option value="${i}">${i}</option>`).join('')}</select>
       <button class="btn small" data-action="missPain" data-id="${miss.id}">Simpan</button></div></div>`;
   }
+  if(ui.person==='istri'&&['F1','F2'].includes(phaseOf(ui.date).key))
+    h+=`<div class="note"><b>Pemanasan:</b> ~5 menit sepeda statis (air bike), seperti kebiasaan lama, sebelum mulai set kerja di bawah.</div>`;
   if(ui.sess!==defSess(ui.date)&&[2,4].includes(pd(ui.date).getDay()))h+=`<p class="muted">Jadwal hari ini Sesi ${defSess(ui.date)}. Anda sedang melihat Sesi ${ui.sess}.</p>`;
+  const WU={db1:'kg',db2:'kg',kb:'kg',machine:'kg',bar:'bar',bw:'kg'};
   items.forEach((it,idx)=>{
-    const ex=EX[it.id],[lo,hi]=it.range[ui.person],sug=suggest(it,ui.person,ui.date);
+    const ex=EX[it.id],[lo,hi]=it.range,sug=suggest(it,ui.person,ui.date),wunit=WU[ex.type];
     const logged=s&&s.entries[it.id]?s.entries[it.id]:[];
     const last=lastEntry(ui.person,it.id,ui.date);
     const key=ui.date+ui.person+ui.sess+it.id;
     const d=drafts[key]||{};
     const wv=d.w??(logged.length?logged[logged.length-1].w:(sug.w??''));
     const rv=d.r??(logged.length?logged[logged.length-1].r:sug.r);
-    const cap=ui.person==='istri'&&ex.knee?10:null;
+    const cap=ui.person==='istri'?ex.capReps:null;
     h+=`<section class="card" aria-labelledby="t${idx}">
       <div class="ex-title"><h2 id="t${idx}">${esc(ex.name)}</h2><span class="target">${it.sets} × ${lo}–${hi} ${UNIT[ex.unit]}${ex.perSide?'/sisi':''}</span></div>
       ${ex.cue?`<p class="cue">${esc(ex.cue)}</p>`:''}
-      ${last?`<div class="last">Terakhir (${fmtShort(last.date)}): ${last.sets.map(x=>kg(x.w)+'×'+x.r).join(', ')}</div>`:''}
+      ${last?`<div class="last">Terakhir (${fmtShort(last.date)}): ${last.sets.map(x=>kg(x.w)+' '+wunit+'×'+x.r).join(', ')}</div>`:''}
       <div class="sug ${sug.hold?'hold':''}">${esc(sug.text)}</div>
-      ${logged.length?`<div class="sets">${logged.map((x,i)=>`<span class="set ${cap&&x.r>cap?'over':''}">${i+1}: ${kg(x.w)} kg × ${x.r}<button data-action="delset" data-ex="${it.id}" data-i="${i}" aria-label="Hapus set ${i+1}">×</button></span>`).join('')}</div>`:''}
+      ${logged.length?`<div class="sets">${logged.map((x,i)=>`<span class="set ${cap&&x.r>cap?'over':''}">${i+1}: ${kg(x.w)} ${wunit} × ${x.r}<button data-action="delset" data-ex="${it.id}" data-i="${i}" aria-label="Hapus set ${i+1}">×</button></span>`).join('')}</div>`:''}
       ${cap&&logged.some(x=>x.r>cap)?`<p class="cue" style="color:var(--warn)">Aturan lutut: maksimal ${cap} repetisi per set untuk gerakan ini.</p>`:''}
       <div class="entry">
         ${stepper('w_'+it.id,LOAD_LABEL[ex.type],wv,STEP[ex.type],'w')}
         ${stepper('r_'+it.id,ex.unit==='reps'?'Repetisi':(ex.unit==='m'?'Jarak (m)':'Waktu (detik)'),rv,ex.unit==='reps'?1:5,'r')}
       </div>
-      <button class="btn plate" data-action="logset" data-ex="${it.id}" data-rest="${it.rest[ui.person]}">${logged.length>=it.sets?'Catat set tambahan':'Catat set '+(logged.length+1)+' dari '+it.sets}</button>
+      <button class="btn plate" data-action="logset" data-ex="${it.id}" data-rest="${it.rest}">${logged.length>=it.sets?'Catat set tambahan':'Catat set '+(logged.length+1)+' dari '+it.sets}</button>
     </section>`;
   });
   if(ui.person==='istri'){
