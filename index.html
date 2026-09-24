@@ -212,6 +212,147 @@ function searchCat(q,bp){
   return out;
 }
 
+/* ================= Saran gerakan (kurasi) =================
+   Kriteria: tujuan jaga/menambah massa otot (bukan atlet), pemula, bisa dilanjutkan di rumah.
+   Kolom sendi dipakai untuk profil yang melacak nyeri sendi: 'hati' = boleh dengan batasan, 'hindari' = tidak disarankan. */
+const HOME_EQ=['dumbbell','kettlebell','body weight'];
+const PATTERNS=[['squat','Squat'],['hinge','Hinge (tekuk pinggul)'],['lunge','Lunge / satu kaki'],['push','Push (dorong)'],['pull','Pull (tarik)'],['carry','Carry (bawa beban)'],['core','Core'],['hip','Penguat pinggul (bantu lutut)'],['extra','Tambahan (betis, lengan)']];
+const PAT_REGION={squat:'bawah',hinge:'bawah',lunge:'bawah',hip:'bawah',push:'atas',pull:'atas',carry:'seluruh',core:'core'};
+const REC=[
+ ['0291','squat','Squat duduk ke bench lalu berdiri: kedalaman terkontrol, paling ramah lutut.',''],
+ ['1760','squat','Dumbbell dipegang di depan dada. Turun sampai bench.','hati'],
+ ['0413','squat','Dumbbell di kedua sisi badan.','hati'],
+ ['1004','squat','Squat dengan band, beban ringan untuk belajar pola.',''],
+ ['1463','squat','Leg press mesin (gym).',''],
+ ['0585','squat','Leg extension mesin (gym), penguat paha depan.',''],
+ ['1459','hinge','Romanian deadlift: pinggul ke belakang, lutut sedikit tekuk.',''],
+ ['0300','hinge','Deadlift dumbbell dari lantai.',''],
+ ['3013','hinge','Glute bridge di lantai, tanpa alat.',''],
+ ['3645','hinge','Glute bridge satu kaki.',''],
+ ['1409','hinge','Glute bridge berbeban (di rumah: dumbbell di pinggul).',''],
+ ['0549','hinge','Kettlebell swing: gerakan cepat, pelajari teknik dulu dengan beban ringan.','hati'],
+ ['0599','hinge','Leg curl duduk (gym).',''],
+ ['0586','hinge','Leg curl telungkup (gym).',''],
+ ['2368','lunge','Split squat statis, tidak melangkah. Boleh berpegangan.','hati'],
+ ['0431','lunge','Step-up ke bench/boks rendah.','hati'],
+ ['0381','lunge','Lunge ke belakang, lebih ramah lutut daripada ke depan.','hati'],
+ ['0336','lunge','Lunge ke depan.','hindari'],
+ ['0410','lunge','Bulgarian split squat (kaki belakang di bench), berat untuk lutut depan.','hindari'],
+ ['1460','lunge','Walking lunge.','hindari'],
+ ['0289','push','Bench press dumbbell.',''],
+ ['0314','push','Bench press dumbbell di bench miring.',''],
+ ['0405','push','Shoulder press duduk.',''],
+ ['0493','push','Push-up tangan di bench/meja, lebih ringan.',''],
+ ['3211','push','Push-up bertumpu lutut.',''],
+ ['0662','push','Push-up biasa.',''],
+ ['0334','push','Lateral raise, bahu samping.',''],
+ ['0577','push','Chest press mesin (gym).',''],
+ ['0292','pull','Row satu tangan bertumpu di bench.',''],
+ ['0327','pull','Row dada ditopang bench miring, aman untuk punggung bawah.',''],
+ ['0293','pull','Row dua tangan, badan membungkuk.',''],
+ ['0541','pull','Row satu tangan dengan kettlebell.',''],
+ ['0383','pull','Reverse fly, bahu belakang & postur.',''],
+ ['0150','pull','Lat pulldown (gym).',''],
+ ['1350','pull','Seated row mesin (gym).',''],
+ ['2133','carry','Farmer’s walk: jalan membawa dumbbell di kedua tangan.',''],
+ ['0276','core','Dead bug, aman untuk punggung bawah.',''],
+ ['0705','core','Side plank.',''],
+ ['2135','core','Plank (beban tambahan opsional).',''],
+ ['0979','core','Pallof press dengan band: menahan badan agar tidak berputar.',''],
+ ['0710','hip','Angkat kaki ke samping sambil berbaring.',''],
+ ['1774','hip','Side plank sambil angkat kaki.',''],
+ ['0628','hip','Monster walk (jalan menyamping, biasanya dengan band).',''],
+ ['0597','hip','Hip abduction mesin (gym).',''],
+ ['0598','hip','Hip adduction mesin (gym).',''],
+ ['1373','extra','Calf raise berdiri.',''],
+ ['0409','extra','Calf raise satu kaki dengan dumbbell.',''],
+ ['0294','extra','Biceps curl.',''],
+ ['0313','extra','Hammer curl.',''],
+ ['0430','extra','Triceps extension di atas kepala.',''],
+ ['0333','extra','Triceps kickback.','']
+];
+const REC_MAP={};REC.forEach(r=>{REC_MAP[r[0]]=r});
+const ADV_RE=/(plyo|jump|burpee|snatch|clean|jerk|planche|handstand|muscle.up|one arm chin|one arm push|single arm push|pistol|dragon|human flag|front lever|back lever|skin the cat|clap)/;
+const KNEE_RE=/(jump|hop|skater|burpee|lunge|pistol|bulgarian|single leg split squat|sissy|jack|scissor|mountain climber|run\b)/;
+function warnFor(r,profile){
+  if(!r)return'';
+  const n=r[2].toLowerCase(),rec=REC_MAP[r[0]],w=[];
+  if(profile.painTracking){
+    const f=rec?rec[3]:(KNEE_RE.test(n)?'hindari':'');
+    if(f==='hindari')w.push('Tidak disarankan untuk profil dengan nyeri sendi: lompatan atau tekukan lutut dalam yang berulang.');
+    else if(f==='hati')w.push('Hati-hati untuk profil dengan nyeri sendi: batasi kedalaman dan mulai tanpa beban.');
+  }
+  if(ADV_RE.test(n))w.push('Gerakan lanjutan/eksplosif: butuh teknik dan pengawasan, kurang cocok untuk pemula.');
+  return w.join(' ');
+}
+function eqScopeDefault(profile){return profile.gymUntil&&today()>=profile.gymUntil?'rumah':'semua'}
+function inLib(profile,m){return Object.values(profile.exercises).some(e=>e.media===m)}
+function recHTML(profile){
+  const scope=ui.eqScope||eqScopeDefault(profile);
+  const ok=r=>(scope==='semua'||HOME_EQ.includes(CATMAP[r[0]][4]))&&!(profile.painTracking&&r[3]==='hindari');
+  let h=scopeSeg(scope,profile);
+  PATTERNS.forEach(([k,label])=>{
+    const rows=REC.filter(r=>r[1]===k&&CATMAP[r[0]]&&ok(r));
+    if(!rows.length)return;
+    h+=`<h3 style="margin-top:12px">${label}</h3>`+rows.map(r=>{
+      const c=CATMAP[r[0]],sel=ui.newExMedia===r[0];
+      return`<div class="wu-item"><img class="thumb sm" src="${thumbURL(r[0])}" alt="" loading="lazy">
+        <div class="grow"><b style="font-size:.92rem">${esc(c[2])}</b><div class="tagline">${esc(r[2])}</div>
+        <div class="tagline">${esc(EQ_ID[c[4]]||c[4])}${profile.painTracking&&r[3]==='hati'?' · <span class="badge">hati-hati: sendi</span>':''}${inLib(profile,r[0])?' · <b>sudah ada</b>':''}</div></div>
+        <button class="btn small ${sel?'':'ghost'}" data-action="pickNew" data-m="${r[0]}">${sel?'Dipilih':'Pilih'}</button></div>`;
+    }).join('');
+  });
+  if(profile.painTracking)h+=`<p class="cue" style="margin-top:8px">Profil ini melacak nyeri sendi, jadi lunge ke depan, Bulgarian split squat, dan walking lunge tidak ditampilkan di sini. Masih bisa ditemukan di "Jelajahi semua" dengan label peringatan.</p>`;
+  return h;
+}
+function scopeSeg(scope,profile){
+  return`<div class="row" style="flex-wrap:wrap;gap:6px"><span class="muted">Alat:</span>
+    <button class="btn small ${scope==='semua'?'':'ghost'}" data-action="eqScope" data-v="semua">Semua (gym + rumah)</button>
+    <button class="btn small ${scope==='rumah'?'':'ghost'}" data-action="eqScope" data-v="rumah">Alat rumah saja</button></div>
+    ${profile.gymUntil?`<p class="tagline" style="margin:4px 0 0">Default: semua alat sampai ${fmtShort(profile.gymUntil)} ${pd(profile.gymUntil).getFullYear()}, setelah itu alat rumah (dumbbell, kettlebell, beban tubuh).</p>`:''}`;
+}
+function browseHTML(profile){
+  const scope=ui.eqScope||eqScopeDefault(profile);
+  return scopeSeg(scope,profile)+`<div class="field"><label>Cari (nama Inggris; "dada", "paha", "bahu" juga bisa)</label>
+    <input type="text" id="brQ" data-browse="1" value="${esc(ui.brQ||'')}" placeholder="kosongkan untuk melihat semua" autocomplete="off">
+    <select id="brBp" data-browse="1" style="margin-top:6px"><option value="">Semua bagian tubuh</option>${Object.keys(BP_ID).map(b=>`<option value="${b}" ${ui.brBp===b?'selected':''}>${BP_ID[b]}</option>`).join('')}</select></div>
+    <div id="brList">${browseList(profile)}</div>`;
+}
+function browseList(profile){
+  const scope=ui.eqScope||eqScopeDefault(profile);
+  const words=(ui.brQ||'').toLowerCase().split(/\s+/).filter(Boolean).map(w=>SEARCH_ALIAS[w]||w);
+  const all=CAT.filter(r=>(scope==='semua'||HOME_EQ.includes(r[4]))&&(!ui.brBp||r[3]===ui.brBp)&&words.every(w=>r[2].toLowerCase().includes(w)));
+  const n=ui.brN||24,shown=all.slice(0,n);
+  if(!all.length)return'<p class="muted">Tidak ada yang cocok. Coba kata lain dalam bahasa Inggris.</p>';
+  return`<p class="tagline">${all.length} gerakan${REC.some(r=>all.includes(CATMAP[r[0]]))?' · ★ = disarankan':''}</p><div class="pickgrid">${shown.map(r=>{
+    const w=warnFor(r,profile),sel=ui.newExMedia===r[0];
+    return`<button data-action="pickNew" data-m="${r[0]}" aria-pressed="${sel}"><img src="${thumbURL(r[0])}" alt="" loading="lazy">${REC_MAP[r[0]]?'★ ':''}${esc(r[2])}<br><span class="tagline">${esc(EQ_ID[r[4]]||r[4])}</span>${w?'<br><span class="badge">⚠ peringatan</span>':''}${inLib(profile,r[0])?'<br><span class="tagline">sudah ada</span>':''}</button>`;
+  }).join('')}</div>${all.length>n?`<button class="btn ghost" data-action="brMore" style="margin-top:8px">Tampilkan lagi (${all.length-n} tersisa)</button>`:''}`;
+}
+function newSelHTML(profile){
+  const m=ui.newExMedia;if(!m||!CATMAP[m])return'';
+  const w=warnFor(CATMAP[m],profile),rec=REC_MAP[m];
+  return`<div class="card" style="margin:10px 0 0">
+    <h3>Dipilih: ${esc(CATMAP[m][2])}</h3>
+    ${mediaBox(m,'',CATMAP[m][2])}
+    ${rec?`<p class="cue">★ Disarankan. ${esc(rec[2])}</p>`:'<p class="cue">Bukan bagian dari daftar saran, tapi boleh dicoba.</p>'}
+    ${w?`<div class="note"><b>Peringatan:</b> ${esc(w)} Tetap bisa ditambahkan.</div>`:''}
+    ${inLib(profile,m)?'<p class="cue">Gerakan dengan gambar ini sudah ada di perpustakaan.</p>':''}</div>`;
+}
+
+/* ================= Perkiraan durasi sesi ================= */
+function estMinutes(profile,items){
+  let s=0;
+  items.forEach(it=>{
+    const ex=profile.exercises[it.exId];if(!ex)return;
+    const avg=(it.lo+it.hi)/2;
+    let work=ex.unit==='reps'?avg*3:(ex.unit==='s'?avg:avg*1.2); // ±3 dtk per repetisi, ±1,2 dtk per meter
+    if(ex.perSide)work*=2;
+    s+=it.sets*(work+it.rest)+45; // +45 dtk pindah alat & atur beban
+  });
+  return Math.round(s/60);
+}
+
 /* ================= Pemanasan (wajib, maks 5 menit) & pendinginan (opsional, 3 menit) =================
    Dipilih otomatis dari area tubuh yang dilatih di sesi. Profil yang melacak nyeri sendi
    tidak diberi gerakan lunge dalam / duduk-berdiri berulang. */
@@ -357,12 +498,12 @@ function defaultProfiles(){
 }
 function defaultProfilesRaw(){
   return{
-    juan:{id:'juan',name:'JuAn',painTracking:false,ceiling:30,startDate:'2026-09-22',techEnd:'2026-10-06',projFrom:'2026-10-06',
+    juan:{id:'juan',name:'JuAn',gymUntil:'2027-01-12',painTracking:false,ceiling:30,startDate:'2026-09-22',techEnd:'2026-10-06',projFrom:'2026-10-06',
       sessionTypes:[{key:'A',label:'Sesi A'},{key:'B',label:'Sesi B'}],
       schedule:{days:{'2':'A','4':'B'}},
       phases:[{key:'F1',name:'Fase 1 · Belajar gerak',until:'2026-11-03'},{key:'F2',name:'Fase 2 · Transisi',until:'2026-12-15'},{key:'F3',name:'Fase 3 · Simulasi rumah',until:'2027-01-12'},{key:'R',name:'Home gym',until:'9999-12-31'}],
       exercises:exJuan(),plan:planJuan()},
-    annie:{id:'annie',name:'AnNie',painTracking:true,ceiling:30,startDate:'2026-09-22',techEnd:'2026-10-06',projFrom:'2026-10-06',
+    annie:{id:'annie',name:'AnNie',gymUntil:'2027-01-12',painTracking:true,ceiling:30,startDate:'2026-09-22',techEnd:'2026-10-06',projFrom:'2026-10-06',
       sessionTypes:[{key:'A',label:'Sesi A'},{key:'B',label:'Sesi B'}],
       schedule:{days:{'2':'A','4':'B'}},
       phases:[{key:'F1',name:'Fase 1 · Belajar gerak',until:'2026-11-03'},{key:'F2',name:'Fase 2 · Transisi',until:'2026-12-15'},{key:'F3',name:'Fase 3 · Simulasi rumah',until:'2027-01-12'},{key:'R',name:'Home gym',until:'9999-12-31'}],
@@ -381,7 +522,7 @@ function blankProfile(id,name){
 
 /* ================= Penyimpanan + migrasi dari versi lama ================= */
 const KEY='logLatihan.v2', OLD_KEY='logLatihan.v1';
-const blank=()=>({version:2,schema:4,activeProfile:'juan',wake:true,lastExport:null,profiles:defaultProfiles(),logs:[]});
+const blank=()=>({version:2,schema:5,activeProfile:'juan',wake:true,lastExport:null,profiles:defaultProfiles(),logs:[]});
 function migrateV1(o){
   const d=blank();
   if(o.names){d.profiles.juan.name=o.names.tyo||'JuAn';d.profiles.annie.name=o.names.istri||'AnNie'}
@@ -404,7 +545,7 @@ function save(){try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){toast(
 // Pembaruan data lama: tambah gambar & area tubuh ke gerakan bawaan, pindahkan catatan air bike ke Pemanasan
 function upgrade(d){
   const sc=d.schema||0;
-  if(sc>=4)return false;
+  if(sc>=5)return false;
   if(sc<3){
     const OLD_WU='Pemanasan: ~5 menit sepeda statis (air bike), seperti kebiasaan lama, sebelum mulai set kerja di bawah.';
     Object.values(d.profiles).forEach(p=>{
@@ -425,7 +566,9 @@ function upgrade(d){
   // urutkan ulang supaya JuAn tetap tampil pertama
   const order=['juan','annie'].filter(k=>d.profiles[k]).concat(Object.keys(d.profiles).filter(k=>k!=='juan'&&k!=='annie'));
   const np={};order.forEach(k=>np[k]=d.profiles[k]);d.profiles=np;
-  d.schema=4;return true;
+  // tanggal akhir langganan gym JuAn & AnNie (untuk saringan alat default di katalog)
+  ['juan','annie'].forEach(k=>{if(d.profiles[k]&&d.profiles[k].gymUntil===undefined)d.profiles[k].gymUntil='2027-01-12'});
+  d.schema=5;return true;
 }
 if(upgrade(db))justMigrated=true;
 if(justMigrated)save();
@@ -794,10 +937,13 @@ function programExercises(profile){
   return `<details class="sub" ${subAttr('lib',false)}><summary>Perpustakaan gerakan · ${esc(profile.name)}</summary>
     ${rows||'<p class="muted">Belum ada gerakan.</p>'}
     <div class="miniform">
-      <h3>+ Gerakan baru</h3>
-      <p class="cue">Paling mudah: cari gambarnya dulu. Nama, satuan beban, dan area tubuh akan terisi otomatis dan masih bisa diubah.</p>
-      <div id="pkcur_new">${curMediaHTML(ui.newExMedia)}</div>
-      ${pickerHTML('new')}
+      <h3>+ Gerakan baru dari katalog</h3>
+      <p class="cue">Pilih dari saran atau jelajahi seluruh ${CAT.length} gerakan. Nama, satuan beban, dan area tubuh terisi otomatis dan masih bisa diubah.</p>
+      <div class="seg" role="group" aria-label="Cara memilih" style="margin:8px 0">
+        <button data-action="newMode" data-v="rec" aria-pressed="${ui.newMode!=='all'}">Disarankan</button>
+        <button data-action="newMode" data-v="all" aria-pressed="${ui.newMode==='all'}">Jelajahi semua</button></div>
+      ${ui.newMode==='all'?browseHTML(profile):recHTML(profile)}
+      <div id="pkcur_new">${newSelHTML(profile)}</div>
       <div class="formgrid">
         <div class="field"><label>Area tubuh (untuk pemanasan)</label>${regionSelect('id="newExRegion"','')}</div>
         <div class="field"><label>Nama gerakan</label><input type="text" id="newExName" placeholder="Misal: Dumbbell curl"></div>
@@ -866,6 +1012,7 @@ function programPlan(profile){
     <div class="field"><label>Catatan sesi (tampil di atas tab Latihan)</label><input type="text" id="planNoteIn" value="${esc(p.note)}" placeholder="Misal: pemanasan 5 menit dulu"></div>
     <button class="btn small ghost" data-action="savePlanNote">Simpan catatan</button>
     <h3 style="margin-top:12px">Gerakan dalam sesi ini</h3>
+    ${p.items.length?(()=>{const m=estMinutes(profile,p.items),tot=m+5;return`<p class="cue">Perkiraan durasi: <b>±${tot} menit</b> (pemanasan 5 + latihan ${m})${tot>60?' · <span class="badge">lebih dari 60 menit, pertimbangkan mengganti gerakan daripada menambah</span>':''}. Pendinginan opsional +3 menit.</p>`})():''}
     ${rows||'<p class="muted">Belum ada gerakan di sesi ini.</p>'}
     ${Object.keys(profile.exercises).length?`<div class="miniform"><h3>+ Tambah gerakan ke sesi ini</h3>
       <div class="field"><label>Gerakan</label><select id="planAddEx">${exOpts}</select></div>
@@ -970,6 +1117,19 @@ document.addEventListener('click',e=>{
       toast('Gambar gerakan disimpan.');
     }
   }
+  else if(a==='newMode'){ui.newMode=b.dataset.v;ui.brN=24;render()}
+  else if(a==='eqScope'){ui.eqScope=b.dataset.v;ui.brN=24;render()}
+  else if(a==='brMore'){ui.brN=(ui.brN||24)+24;document.getElementById('brList').innerHTML=browseList(profile)}
+  else if(a==='pickNew'){
+    const m=b.dataset.m,r=CATMAP[m];if(!r)return;
+    ui.newExMedia=m;render();
+    const L=eqToLoad(r[4]),rec=REC_MAP[m];
+    document.getElementById('newExName').value=r[2].charAt(0).toUpperCase()+r[2].slice(1);
+    document.getElementById('newExLoadLabel').value=L.loadLabel;document.getElementById('newExInc').value=L.inc;document.getElementById('newExStep').value=L.step;
+    document.getElementById('newExUnit').value=r[3]==='cardio'||/plank|bridge v|side bridge|walk/.test(r[2])?(/walk/.test(r[2])?'m':'s'):'reps';
+    document.getElementById('newExRegion').value=rec&&PAT_REGION[rec[1]]?PAT_REGION[rec[1]]:'';
+    document.getElementById('pkcur_new').scrollIntoView({block:'start',behavior:'smooth'});
+  }
   else if(a==='clearMedia'){const ex=profile.exercises[b.dataset.id];ex.media=null;ex.mediaNote='';save();toast('Gambar dilepas.');render()}
   else if(a==='t-add'){T.end=Math.max(T.end,Date.now())+15000;T.total+=15;T.alerted=false;document.getElementById('timer').classList.remove('done');tick()}
   else if(a==='t-stop')stopTimer();
@@ -1009,7 +1169,8 @@ document.addEventListener('click',e=>{
     if(!name){toast('Isi nama gerakan dulu.');return}
     const id=uid('ex');
     profile.exercises[id]={name,unit:document.getElementById('newExUnit').value,loadLabel:document.getElementById('newExLoadLabel').value.trim()||'kg',
-      inc:num(document.getElementById('newExInc').value),step:num(document.getElementById('newExStep').value)||1,cue:'',
+      inc:num(document.getElementById('newExInc').value),step:num(document.getElementById('newExStep').value)||1,
+      cue:ui.newExMedia?[REC_MAP[ui.newExMedia]?REC_MAP[ui.newExMedia][2]:'',warnFor(CATMAP[ui.newExMedia],profile)].filter(Boolean).join(' '):'',
       media:ui.newExMedia||null,region:document.getElementById('newExRegion').value||''};
     ui.newExMedia=null;
     save();toast('Gerakan ditambahkan.');render();
@@ -1108,6 +1269,7 @@ document.addEventListener('input',e=>{
   const t=e.target;
   if(t.id==='painIn'){document.getElementById('painOut').textContent=t.value;return}
   if(t.dataset&&t.dataset.pick){fillPicker(t.dataset.pick);return}
+  if(t.dataset&&t.dataset.browse){ui.brQ=document.getElementById('brQ').value;ui.brBp=document.getElementById('brBp').value;ui.brN=24;document.getElementById('brList').innerHTML=browseList(curProfile());return}
   if(t.dataset&&t.dataset.kind){const exId=t.id.slice(2),key=ui.date+ui.profileId+ui.sess+exId;drafts[key]=drafts[key]||{};drafts[key][t.dataset.kind]=t.value}
 });
 document.addEventListener('change',e=>{
