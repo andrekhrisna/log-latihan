@@ -131,6 +131,17 @@ details.sub[open]>summary::before{content:'▾ '}
 .pickgrid button{border:1.5px solid var(--line);background:var(--card);border-radius:10px;padding:4px;font-size:.72rem;line-height:1.2;text-align:center}
 .pickgrid button img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;background:#fff}
 .pickgrid button[aria-pressed="true"]{border-color:var(--plate);border-width:2.5px}
+.wk{display:grid;grid-template-columns:132px 1fr 56px;gap:8px;align-items:center;font-size:.88rem;margin:6px 0}
+.wk .bar{height:10px;background:var(--line);border-radius:6px;position:relative;overflow:hidden}
+.wk .bar i{display:block;height:100%;border-radius:6px}
+.wk .bar::after{content:'';position:absolute;left:66.67%;top:0;bottom:0;width:2px;background:var(--ink);opacity:.55}
+.wk .n{font-family:var(--num);font-weight:700;font-size:1.05rem;text-align:right;white-space:nowrap}
+textarea{width:100%;border:1.5px solid var(--line);background:var(--paper);border-radius:10px;padding:8px 10px;resize:vertical;min-height:54px}
+details.notes{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+details.notes>summary{cursor:pointer;font-size:.9rem;color:var(--mat);font-weight:600;list-style:none}
+details.notes>summary::-webkit-details-marker{display:none}
+details.notes label{display:block;font-size:.8rem;color:var(--soft);margin:8px 0 3px}
+.unote{font-size:.88rem;margin:2px 0 6px;padding:5px 9px;border-radius:8px;background:color-mix(in srgb,var(--mat) 9%,transparent)}
 .badge{display:inline-block;font-size:.72rem;padding:1px 7px;border-radius:999px;background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--ink)}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -353,6 +364,68 @@ function estMinutes(profile,items){
   return Math.round(s/60);
 }
 
+/* ================= Set per minggu per kelompok otot =================
+   Dihitung dari otot utama tiap gerakan. 'none' = tidak dihitung (carry, kardio). */
+const MUSCLES={quad:'Paha depan',ham:'Paha belakang & bokong',hip:'Pinggul',calf:'Betis',chest:'Dada',back:'Punggung',shoulder:'Bahu',arm:'Lengan',core:'Core'};
+const MAIN_MUSCLES=['quad','ham','chest','back','shoulder','core'];
+const TARGET_MUSCLE={quads:'quad',glutes:'ham',hamstrings:'ham',abductors:'hip',adductors:'hip',calves:'calf',pectorals:'chest','serratus anterior':'chest',lats:'back','upper back':'back',traps:'back',spine:'back',delts:'shoulder',biceps:'arm',triceps:'arm',forearms:'arm',abs:'core'};
+const BP_MUSCLE={chest:'chest',back:'back',shoulders:'shoulder','upper arms':'arm','lower arms':'arm','lower legs':'calf',waist:'core'};
+function muscleOf(ex){
+  if(ex.muscle)return ex.muscle;
+  const r=ex.media&&CATMAP[ex.media];
+  if(!r)return ex.region==='seluruh'||ex.region==='kardio'?'none':(ex.region==='core'?'core':null);
+  const rec=REC_MAP[r[0]];
+  if(rec){
+    const p=rec[1];
+    if(p==='squat'||p==='lunge')return'quad';
+    if(p==='hinge')return'ham';
+    if(p==='hip')return'hip';
+    if(p==='core')return'core';
+    if(p==='carry')return'none';
+    return BP_MUSCLE[r[3]]||'none';
+  }
+  if(r[3]==='cardio')return'none';
+  if(r[3]==='upper legs'&&/squat|lunge|leg press|step|leg extension/.test(r[2]))return'quad';
+  return TARGET_MUSCLE[r[5]]||BP_MUSCLE[r[3]]||'none';
+}
+function sessFreq(profile){
+  const f={};profile.sessionTypes.forEach(s=>f[s.key]=0);
+  Object.values(profile.schedule.days).forEach(k=>{if(k in f)f[k]++});
+  const any=Object.values(f).some(n=>n>0);
+  if(!any)profile.sessionTypes.forEach(s=>f[s.key]=1);
+  return{f,assumed:!any};
+}
+function weeklySets(profile,phaseKey){
+  const{f,assumed}=sessFreq(profile),tot={},unknown=[];
+  const ph=profile.plan[phaseKey]||{};
+  Object.keys(ph).forEach(sk=>(ph[sk].items||[]).forEach(i=>{
+    const ex=profile.exercises[i.exId];if(!ex)return;
+    const m=muscleOf(ex);
+    if(m===null){if(!unknown.includes(ex.name))unknown.push(ex.name);return}
+    if(m==='none')return;
+    tot[m]=(tot[m]||0)+i.sets*(f[sk]||0);
+  }));
+  const unsched=profile.sessionTypes.filter(s=>!f[s.key]).map(s=>s.label);
+  return{tot,unknown,assumed,unsched};
+}
+function weeklyHTML(profile,phaseKey){
+  const{tot,unknown,assumed,unsched}=weeklySets(profile,phaseKey);
+  const keys=Object.keys(MUSCLES).filter(k=>MAIN_MUSCLES.includes(k)||tot[k]);
+  if(!Object.keys(tot).length&&!unknown.length)return'';
+  const row=k=>{const n=tot[k]||0,c=n>=10?'var(--ok)':(n>=5?'var(--mat)':'var(--warn)');
+    return`<div class="wk"><span>${MUSCLES[k]}</span><div class="bar" role="img" aria-label="${n} dari 10 set"><i style="width:${Math.min(100,n/15*100)}%;background:${c}"></i></div><span class="n" style="color:${c}">${n} set</span></div>`};
+  return`<div class="miniform"><h3>Set per minggu per kelompok otot (fase ini)</h3>
+    ${keys.map(row).join('')}
+    <p class="tagline" style="margin-top:6px">Garis = 10 set/minggu. Kurang dari 5 = rendah, 5–9 = sedang, 10+ = hasil lebih baik menurut meta-analisis Schoenfeld dkk. 2017. Hanya otot utama tiap gerakan yang dihitung; otot pembantu (misal lengan saat press atau row) tidak.</p>
+    ${assumed?'<p class="tagline">Jadwal hari belum diatur, jadi tiap sesi dianggap 1× seminggu.</p>':''}
+    ${!assumed&&unsched.length?`<p class="tagline">Tidak dihitung karena tidak ada di jadwal: ${esc(unsched.join(', '))}.</p>`:''}
+    ${unknown.length?`<p class="tagline">Belum punya kelompok otot (atur di Perpustakaan gerakan): ${esc(unknown.join(', '))}.</p>`:''}</div>`;
+}
+function muscleSelect(cur,auto){
+  return`<select data-f="muscle"><option value="" ${!cur?'selected':''}>Otomatis${auto?' ('+auto+')':''}</option>${Object.keys(MUSCLES).map(k=>`<option value="${k}" ${cur===k?'selected':''}>${MUSCLES[k]}</option>`).join('')}<option value="none" ${cur==='none'?'selected':''}>Tidak dihitung</option></select>`;
+}
+function unitFor(r){return r[3]==='cardio'||/plank|bridge v|side bridge|walk/.test(r[2])?(/walk/.test(r[2])?'m':'s'):'reps'}
+
 /* ================= Pemanasan (wajib, maks 5 menit) & pendinginan (opsional, 3 menit) =================
    Dipilih otomatis dari area tubuh yang dilatih di sesi. Profil yang melacak nyeri sendi
    tidak diberi gerakan lunge dalam / duduk-berdiri berulang. */
@@ -494,7 +567,7 @@ function confirmAll(profile){
 function defaultProfiles(){
   const P=defaultProfilesRaw();
   Object.values(P).forEach(p=>{enrichEx(p.exercises);confirmAll(p)});
-  return P;
+  return clone(P); // tanpa referensi bersama antar fase
 }
 function defaultProfilesRaw(){
   return{
@@ -607,6 +680,30 @@ function lastPain(profileId,beforeDate){
   if(!l)return null;
   return Math.max(l.painDuring??0,l.painNextDay??0);
 }
+function recentEntries(profileId,exId,beforeDate,n,fromDate){
+  return db.logs.filter(l=>l.profileId===profileId&&l.date<beforeDate&&(!fromDate||l.date>=fromDate)&&l.entries[exId]&&l.entries[exId].length)
+    .sort((a,b)=>a.date<b.date?1:-1).slice(0,n).map(l=>l.entries[exId]);
+}
+// Mentok = 3 sesi terakhir di beban teratas yang sama, dan total repetisi di beban itu tidak naik
+function isStalled(profile,itDef,date){
+  const r=recentEntries(profile.id,itDef.exId,date,3,itDef.bumpAt);
+  if(r.length<3)return false;
+  const tops=r.map(a=>Math.max(...a.map(s=>s.w)));
+  if(tops[0]!==tops[1]||tops[1]!==tops[2])return false;
+  const sc=r.map((a,i)=>a.filter(s=>s.w===tops[i]).reduce((x,s)=>x+s.r,0));
+  return sc[0]<=sc[2]&&sc[1]<=sc[2]; // indeks 0 = sesi terbaru, 2 = terlama
+}
+function lastNote(profileId,exId,beforeDate){
+  const l=db.logs.filter(x=>x.profileId===profileId&&x.date<beforeDate&&x.notes&&x.notes[exId]).sort((a,b)=>a.date<b.date?1:-1)[0];
+  return l?{date:l.date,text:l.notes[exId]}:null;
+}
+function adhocItem(profile,exId){
+  let f=null;
+  Object.values(profile.plan).some(ph=>Object.values(ph).some(s=>(f=s.items.find(i=>i.exId===exId))));
+  if(f)return{exId,sets:f.sets,lo:f.lo,hi:f.hi,rest:f.rest,note:'',adhoc:true};
+  const u=profile.exercises[exId].unit;
+  return{exId,sets:3,lo:u==='reps'?8:20,hi:u==='reps'?12:(u==='s'?40:30),rest:90,note:'',adhoc:true};
+}
 function suggest(itDef,ex,profile,date){
   const lo=itDef.lo,hi=itDef.hi,last=lastEntry(profile.id,itDef.exId,date),inc=ex.inc||0;
   if(!last)return{w:null,r:lo,hold:false,text:`Belum ada catatan. Cari beban yang terasa berat tapi rapi di ${lo} ${UNIT[ex.unit]}, sisakan tenaga 2–3 ${UNIT[ex.unit]}.`};
@@ -621,6 +718,13 @@ function suggest(itDef,ex,profile,date){
     return{w:top+inc,r:lo,hold:false,text:`Semua set mencapai ${hi} ${UNIT[ex.unit]}. Naikkan ke ${kg(top+inc)} ${ex.loadLabel}, mulai lagi dari ${lo} ${UNIT[ex.unit]}.`};
   }
   const nr=Math.min(hi,best+(ex.unit==='reps'?1:5));
+  if(isStalled(profile,itDef,date)){
+    const what=ex.unit==='reps'?'repetisi':UNIT[ex.unit];
+    const can=itDef.sets<5&&!itDef.adhoc;
+    return{w:top,r:nr,hold:true,stall:true,canBump:can,text:itDef.sets<5
+      ?`Mentok: 3 sesi terakhir di ${kg(top)} ${ex.loadLabel} tanpa tambahan ${what}. Saran: tambah 1 set (jadi ${itDef.sets+1} set). Alternatif: turunkan beban ±10% lalu naik lagi.`
+      :`Mentok: 3 sesi terakhir di ${kg(top)} ${ex.loadLabel} tanpa tambahan ${what}. Sudah ${itDef.sets} set, jadi jangan tambah set lagi: turunkan beban ±10% lalu naik lagi, atau ganti variasi gerakan.`};
+  }
   return{w:top,r:nr,hold:false,text:`Beban tetap ${kg(top)} ${ex.loadLabel}. Target: tambah ${ex.unit==='reps'?'1 repetisi':'5 '+UNIT[ex.unit]} sampai semua set mencapai ${hi}.`};
 }
 
@@ -722,6 +826,47 @@ function coolCard(rec){
     ${rec.cool.map(k=>wuRow('c',k,COOL[k],base)).join('')}
   </details>`;
 }
+function exCard(profile,lg,itDef,idx){
+  const ex=profile.exercises[itDef.exId];if(!ex)return'';
+  const id=itDef.exId;
+  const sug=suggest(itDef,ex,profile,ui.date);
+  const logged=lg&&lg.entries[id]?lg.entries[id]:[];
+  const last=lastEntry(profile.id,id,ui.date);
+  const key=ui.date+profile.id+ui.sess+id;
+  const d=drafts[key]||{};
+  const wv=d.w??(logged.length?logged[logged.length-1].w:(sug.w??''));
+  const rv=d.r??(logged.length?logged[logged.length-1].r:sug.r);
+  const cap=profile.painTracking?ex.capReps:null;
+  const mk='ex:'+id;
+  const sNote=(lg&&lg.notes&&lg.notes[id])||'',ln=lastNote(profile.id,id,ui.date);
+  return`<section class="card" aria-labelledby="t${idx}">
+    <div class="ex-head">${mediaThumb(ex.media,mk,ex.name)}<div class="grow">
+    <div class="ex-title"><h2 id="t${idx}">${esc(ex.name)}</h2><span class="target">${itDef.sets} × ${itDef.lo}–${itDef.hi} ${UNIT[ex.unit]}${ex.perSide?'/sisi':''}</span></div>
+    ${itDef.adhoc?'<span class="badge">dadakan · hanya sesi ini</span>':''}</div></div>
+    ${openMedia.has(mk)?mediaBox(ex.media,ex.mediaNote,ex.name):''}
+    ${ex.cue?`<p class="cue">${esc(ex.cue)}</p>`:''}
+    ${itDef.note?`<p class="cue">${esc(itDef.note)}</p>`:''}
+    <div id="un_${id}">${ex.note?`<p class="unote"><b>Catatan:</b> ${esc(ex.note)}</p>`:''}</div>
+    ${last?`<div class="last">Terakhir (${fmtShort(last.date)}): ${last.sets.map(x=>kg(x.w)+' '+esc(ex.loadLabel)+'×'+x.r).join(', ')}</div>`:''}
+    ${ln?`<div class="last">Catatan sesi ${fmtShort(ln.date)}: ${esc(ln.text)}</div>`:''}
+    <div class="sug ${sug.hold?'hold':''}">${esc(sug.text)}${sug.stall&&sug.canBump?`<br><button class="btn small" data-action="bumpSet" data-ex="${id}" style="margin-top:6px">Tambah 1 set ke program</button>`:''}</div>
+    ${logged.length?`<div class="sets">${logged.map((x,i)=>`<span class="set ${cap&&x.r>cap?'over':''}">${i+1}: ${kg(x.w)} ${esc(ex.loadLabel)} × ${x.r}<button data-action="delset" data-ex="${id}" data-i="${i}" aria-label="Hapus set ${i+1}">×</button></span>`).join('')}</div>`:''}
+    ${cap&&logged.some(x=>x.r>cap)?`<p class="cue" style="color:var(--warn)">Aturan sendi: maksimal ${cap} repetisi per set untuk gerakan ini.</p>`:''}
+    <div class="entry">
+      ${stepper('w_'+id,ex.loadLabel,wv,ex.step||1,'w')}
+      ${stepper('r_'+id,ex.unit==='reps'?'Repetisi':(ex.unit==='m'?'Jarak (m)':'Waktu (detik)'),rv,ex.unit==='reps'?1:5,'r')}
+    </div>
+    <button class="btn plate" data-action="logset" data-ex="${id}" data-rest="${itDef.rest}">${logged.length>=itDef.sets?'Catat set tambahan':'Catat set '+(logged.length+1)+' dari '+itDef.sets}</button>
+    <details class="notes" ${subAttr('n:'+id,false)}><summary>Catatan${ex.note||sNote?' ●':''}</summary>
+      <label for="np_${id}">Catatan tetap (selalu tampil di gerakan ini)</label>
+      <textarea id="np_${id}" data-note="perm" data-ex="${id}" placeholder="Misal: posisi kursi nomor 4, pegangan netral">${esc(ex.note||'')}</textarea>
+      <label for="ns_${id}">Catatan sesi ini (tersimpan di Riwayat)</label>
+      <textarea id="ns_${id}" data-note="sess" data-ex="${id}" placeholder="Misal: bahu kiri agak kaku, set terakhir berat">${esc(sNote)}</textarea>
+      <p class="tagline">Tersimpan otomatis saat selesai mengetik.</p>
+    </details>
+    ${itDef.adhoc?`<button class="iconbtn danger" data-action="adhocDel" data-ex="${id}" style="margin-top:6px">Hapus dari sesi ini</button>`:''}
+  </section>`;
+}
 function renderLog(){
   const v=document.getElementById('view');
   const profile=curProfile();
@@ -743,34 +888,20 @@ function renderLog(){
   if(!Object.keys(profile.exercises).length)
     h+=`<div class="card"><h2>Belum ada gerakan</h2><p class="muted">Profil ini belum punya program. Buka tab <b>Program</b> untuk menambah gerakan dan menyusun sesi.</p></div>`;
   if(ui.sess!==defSess(profile,ui.date))h+=`<p class="muted">Jadwal hari ini Sesi ${esc(defSess(profile,ui.date))}. Anda sedang melihat Sesi ${esc(ui.sess)}.</p>`;
-  items.forEach((itDef,idx)=>{
-    const ex=profile.exercises[itDef.exId];if(!ex)return;
-    const sug=suggest(itDef,ex,profile,ui.date);
-    const logged=lg&&lg.entries[itDef.exId]?lg.entries[itDef.exId]:[];
-    const last=lastEntry(profile.id,itDef.exId,ui.date);
-    const key=ui.date+profile.id+ui.sess+itDef.exId;
-    const d=drafts[key]||{};
-    const wv=d.w??(logged.length?logged[logged.length-1].w:(sug.w??''));
-    const rv=d.r??(logged.length?logged[logged.length-1].r:sug.r);
-    const cap=profile.painTracking?ex.capReps:null;
-    const mk='ex:'+itDef.exId;
-    h+=`<section class="card" aria-labelledby="t${idx}">
-      <div class="ex-head">${mediaThumb(ex.media,mk,ex.name)}<div class="grow">
-      <div class="ex-title"><h2 id="t${idx}">${esc(ex.name)}</h2><span class="target">${itDef.sets} × ${itDef.lo}–${itDef.hi} ${UNIT[ex.unit]}${ex.perSide?'/sisi':''}</span></div></div></div>
-      ${openMedia.has(mk)?mediaBox(ex.media,ex.mediaNote,ex.name):''}
-      ${ex.cue?`<p class="cue">${esc(ex.cue)}</p>`:''}
-      ${itDef.note?`<p class="cue">${esc(itDef.note)}</p>`:''}
-      ${last?`<div class="last">Terakhir (${fmtShort(last.date)}): ${last.sets.map(x=>kg(x.w)+' '+esc(ex.loadLabel)+'×'+x.r).join(', ')}</div>`:''}
-      <div class="sug ${sug.hold?'hold':''}">${esc(sug.text)}</div>
-      ${logged.length?`<div class="sets">${logged.map((x,i)=>`<span class="set ${cap&&x.r>cap?'over':''}">${i+1}: ${kg(x.w)} ${esc(ex.loadLabel)} × ${x.r}<button data-action="delset" data-ex="${itDef.exId}" data-i="${i}" aria-label="Hapus set ${i+1}">×</button></span>`).join('')}</div>`:''}
-      ${cap&&logged.some(x=>x.r>cap)?`<p class="cue" style="color:var(--warn)">Aturan sendi: maksimal ${cap} repetisi per set untuk gerakan ini.</p>`:''}
-      <div class="entry">
-        ${stepper('w_'+itDef.exId,ex.loadLabel,wv,ex.step||1,'w')}
-        ${stepper('r_'+itDef.exId,ex.unit==='reps'?'Repetisi':(ex.unit==='m'?'Jarak (m)':'Waktu (detik)'),rv,ex.unit==='reps'?1:5,'r')}
-      </div>
-      <button class="btn plate" data-action="logset" data-ex="${itDef.exId}" data-rest="${itDef.rest}">${logged.length>=itDef.sets?'Catat set tambahan':'Catat set '+(logged.length+1)+' dari '+itDef.sets}</button>
-    </section>`;
-  });
+  const planIds=items.map(i=>i.exId);
+  const extras=((lg&&lg.extra)||[]).filter(id=>profile.exercises[id]&&!planIds.includes(id));
+  items.forEach((itDef,idx)=>{h+=exCard(profile,lg,itDef,idx)});
+  extras.forEach((id,k)=>{h+=exCard(profile,lg,adhocItem(profile,id),items.length+k)});
+  if(Object.keys(profile.exercises).length){
+    const avail=Object.keys(profile.exercises).filter(id=>!planIds.includes(id)&&!extras.includes(id));
+    h+=`<details class="card" ${subAttr('adhoc',false)}><summary style="cursor:pointer;list-style:none"><h2>+ Gerakan dadakan</h2>
+      <p class="cue" style="margin:0">Hanya untuk sesi ini. Program tidak berubah.</p></summary>
+      ${avail.length?`<div class="field"><label for="adhocSel">Dari perpustakaan gerakan</label><select id="adhocSel">${avail.map(id=>`<option value="${id}">${esc(profile.exercises[id].name)}</option>`).join('')}</select></div>
+      <button class="btn small" data-action="adhocAdd">Tambah ke sesi ini</button>`:'<p class="muted">Semua gerakan di perpustakaan sudah ada di sesi ini.</p>'}
+      <h3 style="margin-top:14px">Atau cari di katalog</h3>
+      <p class="cue">Gerakan yang dipilih otomatis masuk ke perpustakaan dan ke sesi ini.</p>
+      ${pickerHTML('adhoc')}</details>`;
+  }
   if(rec)h+=coolCard(rec);
   if(profile.painTracking){
     const pv=lg&&lg.painDuring!=null?lg.painDuring:0;
@@ -783,7 +914,7 @@ function renderLog(){
 }
 function renderHist(){
   const v=document.getElementById('view');
-  const list=db.logs.filter(l=>Object.keys(l.entries).length||l.painDuring!=null).sort((a,b)=>a.date<b.date?1:(a.date>b.date?-1:0));
+  const list=db.logs.filter(l=>Object.values(l.entries).some(a=>a.length)||l.painDuring!=null||(l.notes&&Object.keys(l.notes).length)).sort((a,b)=>a.date<b.date?1:(a.date>b.date?-1:0));
   if(!list.length){v.innerHTML=`<div class="card"><h2>Belum ada sesi</h2><p class="muted">Catat set pertama di tab Latihan. Sesi akan muncul di sini.</p></div>`;return}
   v.innerHTML=list.map(l=>{
     const profile=db.profiles[l.profileId];
@@ -796,7 +927,8 @@ function renderHist(){
       <label class="muted">Keesokan hari <select data-action="painEdit" data-id="${l.id}" data-f="painNextDay" style="width:auto">${painOpts(l.painNextDay)}</select></label></div>`:'';
     const flag=tracks&&Math.max(l.painDuring??0,l.painNextDay??0)>3?' · <span style="color:var(--warn)">nyeri &gt;3</span>':'';
     return `<details class="card hist-item"><summary><div class="sum"><div><h2>${fmt(l.date)}</h2><div class="muted">${esc(pname)} · Sesi ${esc(l.sess)} · ${esc(phName)}${flag}</div></div><span class="target">${exs.length} gerakan</span></div></summary>
-      ${exs.map(([id,a])=>`<div class="hist-ex"><b>${esc(profile&&profile.exercises[id]?profile.exercises[id].name:id)}</b>: ${a.map(x=>kg(x.w)+'×'+x.r).join(', ')}</div>`).join('')}
+      ${exs.map(([id,a])=>`<div class="hist-ex"><b>${esc(profile&&profile.exercises[id]?profile.exercises[id].name:id)}</b>${(l.extra||[]).includes(id)?' <span class="badge">dadakan</span>':''}: ${a.map(x=>kg(x.w)+'×'+x.r).join(', ')}${l.notes&&l.notes[id]?`<div class="muted">Catatan: ${esc(l.notes[id])}</div>`:''}</div>`).join('')}
+      ${Object.keys(l.notes||{}).filter(id=>!exs.some(([e])=>e===id)).map(id=>`<div class="hist-ex"><b>${esc(profile&&profile.exercises[id]?profile.exercises[id].name:id)}</b><div class="muted">Catatan: ${esc(l.notes[id])}</div></div>`).join('')}
       ${pain}
       <button class="btn small danger" data-action="delsess" data-id="${l.id}" style="margin-top:10px">Hapus sesi ini</button></details>`;
   }).join('');
@@ -925,10 +1057,12 @@ function programExercises(profile){
         <div class="field"><label>Langkah tombol +/-</label><input type="number" step="0.5" data-f="step" value="${ex.step}"></div>
         <div class="field"><label>Batas repetisi keras (opsional)</label><input type="number" data-f="capReps" value="${ex.capReps??''}" placeholder="kosongkan jika tidak ada"></div>
         <div class="field"><label>Area tubuh (untuk pemanasan)</label>${regionSelect('data-f="region"',ex.region||'')}</div>
+        <div class="field"><label>Kelompok otot (hitungan set/minggu)</label>${muscleSelect(ex.muscle||'',(m=>m===null?'belum diketahui':(m==='none'?'tidak dihitung':MUSCLES[m]))(muscleOf(Object.assign({},ex,{muscle:''}))))}</div>
       </div>
       <label class="check"><input type="checkbox" data-f="perSide" ${ex.perSide?'checked':''}> Per sisi (kanan/kiri terpisah)</label>
       <label class="check"><input type="checkbox" data-f="knee" ${ex.knee?'checked':''}> Tandai gerakan berisiko sendi</label>
-      <div class="field"><label>Catatan/cue</label><input type="text" data-f="cue" value="${esc(ex.cue||'')}"></div>
+      <div class="field"><label>Petunjuk gerakan</label><input type="text" data-f="cue" value="${esc(ex.cue||'')}"></div>
+      <div class="field"><label>Catatan tetap (bisa juga diisi dari tab Latihan)</label><input type="text" data-f="note" value="${esc(ex.note||'')}"></div>
       <div class="row" style="margin-top:8px">
         <button class="btn small" data-action="saveExercise" data-id="${id}">Simpan</button>
         <button class="btn small danger" data-action="delExercise" data-id="${id}">Hapus gerakan</button>
@@ -999,8 +1133,10 @@ function programPlan(profile){
   const p=profile.plan[ui.editPhase]&&profile.plan[ui.editPhase][ui.editSess]?profile.plan[ui.editPhase][ui.editSess]:{note:'',items:[]};
   const rows=p.items.map((itDef,i)=>{
     const ex=profile.exercises[itDef.exId];
-    return `<div class="list-row"><div class="who"><b>${esc(ex?ex.name:itDef.exId)}</b><div class="tagline">${itDef.sets} × ${itDef.lo}–${itDef.hi} ${ex?UNIT[ex.unit]:''} · istirahat ${itDef.rest}dtk</div></div>
-      <div class="row" style="gap:2px">
+    return `<div class="list-row" style="flex-wrap:wrap"><div class="who"><b>${esc(ex?ex.name:itDef.exId)}</b><div class="tagline">${itDef.sets} × ${itDef.lo}–${itDef.hi} ${ex?UNIT[ex.unit]:''} · istirahat ${itDef.rest}dtk</div></div>
+      <div class="row" style="gap:2px;flex-wrap:wrap;justify-content:flex-end;margin-left:auto">
+        <button class="iconbtn" data-action="planSets" data-i="${i}" data-d="-1" aria-label="Kurangi 1 set">− set</button>
+        <button class="iconbtn" data-action="planSets" data-i="${i}" data-d="1" aria-label="Tambah 1 set">+ set</button>
         ${i>0?`<button class="iconbtn" data-action="movePlanItem" data-i="${i}" data-dir="-1" aria-label="Naik">↑</button>`:''}
         ${i<p.items.length-1?`<button class="iconbtn" data-action="movePlanItem" data-i="${i}" data-dir="1" aria-label="Turun">↓</button>`:''}
         <button class="iconbtn danger" data-action="delPlanItem" data-i="${i}">Hapus</button>
@@ -1009,6 +1145,7 @@ function programPlan(profile){
   const exOpts=Object.keys(profile.exercises).map(id=>`<option value="${id}">${esc(profile.exercises[id].name)}</option>`).join('');
   return `<details class="sub" ${subAttr('plan',true)}><summary>Susunan program per fase &amp; sesi · ${esc(profile.name)}</summary>
     <div class="formgrid"><div class="field"><label>Fase</label>${phSel}</div><div class="field"><label>Sesi</label>${sessSel}</div></div>
+    ${weeklyHTML(profile,ui.editPhase)}
     <div class="field"><label>Catatan sesi (tampil di atas tab Latihan)</label><input type="text" id="planNoteIn" value="${esc(p.note)}" placeholder="Misal: pemanasan 5 menit dulu"></div>
     <button class="btn small ghost" data-action="savePlanNote">Simpan catatan</button>
     <h3 style="margin-top:12px">Gerakan dalam sesi ini</h3>
@@ -1062,6 +1199,13 @@ function renderData(){
 }
 
 /* ================= Aksi ================= */
+function addAdhoc(profile,exId,msg){
+  const pl=planForLog(profile,ui.date,ui.sess);
+  const l=getOrCreateLog(profile,ui.date,ui.sess);l.extra=l.extra||[];
+  if(pl.items.some(i=>i.exId===exId)||l.extra.includes(exId)){toast('Gerakan itu sudah ada di sesi ini.');return}
+  l.extra.push(exId);save();render();
+  toast(msg||'Gerakan dadakan ditambahkan ke sesi ini.');
+}
 function readInputs(exId){
   return{w:num(document.getElementById('w_'+exId).value),r:Math.round(num(document.getElementById('r_'+exId).value))};
 }
@@ -1089,6 +1233,25 @@ document.addEventListener('click',e=>{
     const l=getOrCreateLog(profile,ui.date,ui.sess);(l.entries[exId]=l.entries[exId]||[]).push({w,r});save();
     startTimer(+b.dataset.rest,profile.exercises[exId].name);render();
   }
+  else if(a==='adhocAdd'){const el=document.getElementById('adhocSel');if(el&&el.value)addAdhoc(profile,el.value)}
+  else if(a==='adhocDel'){
+    const l=findLog(profile.id,ui.date,ui.sess),exId=b.dataset.ex;if(!l)return;
+    const n=(l.entries[exId]||[]).length;
+    if(n&&!confirm(`Hapus gerakan ini dari sesi beserta ${n} set yang sudah dicatat?`))return;
+    l.extra=(l.extra||[]).filter(x=>x!==exId);delete l.entries[exId];if(l.notes)delete l.notes[exId];
+    save();render();
+  }
+  else if(a==='bumpSet'){
+    const exId=b.dataset.ex,pl=planForLog(profile,ui.date,ui.sess);
+    const item=pl.items.find(x=>x.exId===exId);if(!item||item.sets>=5)return;
+    item.sets++;item.bumpAt=ui.date;save();
+    const phName=(profile.phases.find(p=>p.key===pl.phase)||{}).name||pl.phase;
+    toast(`Jadi ${item.sets} set di ${phName}, Sesi ${ui.sess}.`);render();
+  }
+  else if(a==='planSets'){
+    const p=profile.plan[ui.editPhase][ui.editSess],item=p.items[+b.dataset.i];if(!item)return;
+    item.sets=Math.max(1,Math.min(8,item.sets+(+b.dataset.d)));save();render();
+  }
   else if(a==='delset'){const l=findLog(profile.id,ui.date,ui.sess);if(!l)return;l.entries[b.dataset.ex].splice(+b.dataset.i,1);save();render()}
   else if(a==='savepain'){const l=getOrCreateLog(profile,ui.date,ui.sess);l.painDuring=+document.getElementById('painIn').value;save();toast('Skor nyeri disimpan.');render()}
   else if(a==='missPain'){const l=db.logs.find(x=>x.id===b.dataset.id);l.painNextDay=+document.getElementById('missPain').value;save();toast('Nyeri keesokan hari disimpan.');render()}
@@ -1103,7 +1266,16 @@ document.addEventListener('click',e=>{
   else if(a==='pickMedia'){
     const t=b.dataset.t,m=b.dataset.m,r=CATMAP[m];if(!r)return;
     b.parentElement.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed','false'));b.setAttribute('aria-pressed','true');
-    if(t==='new'){
+    if(t==='adhoc'){
+      let exId=Object.keys(profile.exercises).find(k=>profile.exercises[k].media===m),w='';
+      if(!exId){
+        exId=uid('ex');const L=eqToLoad(r[4]),rec=REC_MAP[m];w=warnFor(r,profile);
+        profile.exercises[exId]={name:r[2].charAt(0).toUpperCase()+r[2].slice(1),unit:unitFor(r),loadLabel:L.loadLabel,inc:L.inc,step:L.step,
+          cue:[rec?rec[2]:'',w].filter(Boolean).join(' '),media:m,region:rec&&PAT_REGION[rec[1]]?PAT_REGION[rec[1]]:''};
+      }
+      addAdhoc(profile,exId,w?'Ditambahkan. Ada peringatan untuk gerakan ini, baca petunjuknya.':'');
+    }
+    else if(t==='new'){
       ui.newExMedia=m;
       const nm=document.getElementById('newExName');if(!nm.value.trim())nm.value=r[2].charAt(0).toUpperCase()+r[2].slice(1);
       const L=eqToLoad(r[4]);
@@ -1274,6 +1446,19 @@ document.addEventListener('input',e=>{
 });
 document.addEventListener('change',e=>{
   const t=e.target;
+  if(t.dataset&&t.dataset.note){
+    const profile=curProfile(),exId=t.dataset.ex,v=t.value.trim();
+    if(t.dataset.note==='perm'){
+      const ex=profile.exercises[exId];if(!ex)return;ex.note=v;
+      const box=document.getElementById('un_'+exId);if(box)box.innerHTML=v?`<p class="unote"><b>Catatan:</b> ${esc(v)}</p>`:'';
+    }else{
+      let l=findLog(profile.id,ui.date,ui.sess);
+      if(!l&&!v)return;
+      l=l||getOrCreateLog(profile,ui.date,ui.sess);l.notes=l.notes||{};
+      if(v)l.notes[exId]=v;else delete l.notes[exId];
+    }
+    save();toast('Catatan disimpan.');return;
+  }
   if(t.id==='dateIn'&&t.value){ui.date=t.value;ui.sess=defSess(curProfile(),ui.date);render()}
   else if(t.dataset.action==='progEx'){ui.progEx=t.value;render()}
   else if(t.dataset.action==='painEdit'){const l=db.logs.find(x=>x.id===t.dataset.id);l[t.dataset.f]=t.value===''?null:+t.value;save();toast('Skor nyeri diperbarui.')}
