@@ -424,13 +424,23 @@ function weeklyHTML(profile,phaseKey){
 function muscleSelect(cur,auto){
   return`<select data-f="muscle"><option value="" ${!cur?'selected':''}>Otomatis${auto?' ('+auto+')':''}</option>${Object.keys(MUSCLES).map(k=>`<option value="${k}" ${cur===k?'selected':''}>${MUSCLES[k]}</option>`).join('')}<option value="none" ${cur==='none'?'selected':''}>Tidak dihitung</option></select>`;
 }
+const LOAD_PRESETS=[
+  {v:'kg',t:'kg',inc:2.5,step:1},
+  {v:'kg / dumbbell',t:'kg per dumbbell',inc:2.5,step:1},
+  {v:'kg (mesin)',t:'kg (angka pelat/tumpukan di mesin)',inc:2.5,step:2.5},
+  {v:'bar (angka pin mesin)',t:'bar (angka pin mesin)',inc:1,step:1}
+];
+function loadPick(cur){
+  const hit=LOAD_PRESETS.find(x=>x.v===cur);
+  return`<select data-loadpick aria-label="Pilih satuan beban">${LOAD_PRESETS.map(x=>`<option value="${esc(x.v)}" ${hit&&hit.v===cur&&x.v===cur?'selected':''}>${esc(x.t)}</option>`).join('')}<option value="__custom" ${hit?'':'selected'}>Lainnya (ketik sendiri)</option></select>`;
+}
 function unitFor(r){return r[3]==='cardio'||/plank|bridge v|side bridge|walk/.test(r[2])?(/walk/.test(r[2])?'m':'s'):'reps'}
 
 /* ================= Pemanasan (wajib, maks 5 menit) & pendinginan (opsional, 3 menit) =================
    Dipilih otomatis dari area tubuh yang dilatih di sesi. Profil yang melacak nyeri sendi
    tidak diberi gerakan lunge dalam / duduk-berdiri berulang. */
 const WARM={
-  gen:{name:'Sepeda statis santai (air bike juga boleh) atau jalan cepat di tempat',dose:'2 menit',sec:120,media:'0798'},
+  gen:{name:'Air Bike santai (atau sepeda statis)',dose:'2 menit',sec:120,media:'0798'},
   bridge:{name:'Glute bridge pelan',dose:'10×',media:'3013'},
   sideabd:{name:'Angkat kaki ke samping sambil berbaring',dose:'10×/sisi',media:'0710'},
   ankle:{name:'Putar pergelangan kaki',dose:'10×/arah',media:'1368'},
@@ -459,18 +469,20 @@ function sessionRegions(profile,items){
   return s;
 }
 function recommend(profile,items){
-  const R=sessionRegions(profile,items),pain=!!profile.painTracking;
+  const R=sessionRegions(profile,items),pain=!!profile.painTracking,cardio=!!profile.warmCardio;
   const lowW=pain?['bridge','sideabd','ankle']:['bridge','wgs','highknee'];
   const upW=['dynchest','armcircle','sidereach'];
   const lowC=pain?['ham','calf','glute']:['ham','quad','calf'];
   const upC=['chest','upback','tri'];
-  let w=[],c=[];
   const lo=R.has('bawah'),up=R.has('atas'),co=R.has('core');
-  if(lo&&up){w=[...lowW.slice(0,2),...upW.slice(0,2)];c=[...lowC.slice(0,2),...upC.slice(0,2)]}
-  else if(lo){w=[...lowW,'pelvic'];c=[...lowC,'lat']}
-  else if(up){w=[...upW,'pelvic'];c=[...upC,'lat']}
-  else if(co){w=['pelvic','deadbug','bridge'];c=['lat','ham','glute']}
-  return{sig:[...R].sort().join(',')+'|'+(pain?1:0),regions:[...R],warm:['gen',...w],cool:['walk',...c]};
+  let pool=[],c=[];
+  if(lo&&up){pool=[lowW[0],upW[0],lowW[1],upW[1]];c=[lowC[0],lowC[1],upC[0]]}
+  else if(lo){pool=lowW;c=lowC}
+  else if(up){pool=upW;c=upC}
+  else if(co){pool=['pelvic','deadbug','bridge'];c=['lat','ham','glute']}
+  // selalu tepat 3 gerakan; kalau kardio aktif, kardio mengisi satu tempat
+  const w=cardio?['gen',...pool.slice(0,2)]:pool.slice(0,3);
+  return{sig:[...R].sort().join(',')+'|'+(pain?1:0)+'|'+(cardio?1:0),regions:[...R],warm:w,cool:c.slice(0,3)};
 }
 
 /* ================= Contoh program bawaan: JuAn & AnNie ================= */
@@ -571,12 +583,12 @@ function defaultProfiles(){
 }
 function defaultProfilesRaw(){
   return{
-    juan:{id:'juan',name:'JuAn',gymUntil:'2027-01-12',painTracking:false,ceiling:30,startDate:'2026-09-22',techEnd:'2026-10-06',projFrom:'2026-10-06',
+    juan:{id:'juan',name:'JuAn',gymUntil:'2027-01-12',painTracking:false,warmCardio:false,ceiling:30,startDate:'2026-09-22',techEnd:'2026-10-06',projFrom:'2026-10-06',
       sessionTypes:[{key:'A',label:'Sesi A'},{key:'B',label:'Sesi B'}],
       schedule:{days:{'2':'A','4':'B'}},
       phases:[{key:'F1',name:'Fase 1 · Belajar gerak',until:'2026-11-03'},{key:'F2',name:'Fase 2 · Transisi',until:'2026-12-15'},{key:'F3',name:'Fase 3 · Simulasi rumah',until:'2027-01-12'},{key:'R',name:'Home gym',until:'9999-12-31'}],
       exercises:exJuan(),plan:planJuan()},
-    annie:{id:'annie',name:'AnNie',gymUntil:'2027-01-12',painTracking:true,ceiling:30,startDate:'2026-09-22',techEnd:'2026-10-06',projFrom:'2026-10-06',
+    annie:{id:'annie',name:'AnNie',gymUntil:'2027-01-12',painTracking:true,warmCardio:true,ceiling:30,startDate:'2026-09-22',techEnd:'2026-10-06',projFrom:'2026-10-06',
       sessionTypes:[{key:'A',label:'Sesi A'},{key:'B',label:'Sesi B'}],
       schedule:{days:{'2':'A','4':'B'}},
       phases:[{key:'F1',name:'Fase 1 · Belajar gerak',until:'2026-11-03'},{key:'F2',name:'Fase 2 · Transisi',until:'2026-12-15'},{key:'F3',name:'Fase 3 · Simulasi rumah',until:'2027-01-12'},{key:'R',name:'Home gym',until:'9999-12-31'}],
@@ -585,7 +597,7 @@ function defaultProfilesRaw(){
 }
 function blankProfile(id,name){
   const k=uid('P').slice(0,10);
-  return{id,name,painTracking:false,ceiling:30,startDate:today(),techEnd:null,projFrom:null,
+  return{id,name,painTracking:false,warmCardio:false,ceiling:30,startDate:today(),techEnd:null,projFrom:null,
     sessionTypes:[{key:'A',label:'Sesi A'},{key:'B',label:'Sesi B'}],
     schedule:{days:{}},
     phases:[{key:k,name:'Program',until:'9999-12-31'}],
@@ -595,7 +607,7 @@ function blankProfile(id,name){
 
 /* ================= Penyimpanan + migrasi dari versi lama ================= */
 const KEY='logLatihan.v2', OLD_KEY='logLatihan.v1';
-const blank=()=>({version:2,schema:5,activeProfile:'juan',wake:true,lastExport:null,profiles:defaultProfiles(),logs:[]});
+const blank=()=>({version:2,schema:6,activeProfile:'juan',wake:true,lastExport:null,profiles:defaultProfiles(),logs:[]});
 function migrateV1(o){
   const d=blank();
   if(o.names){d.profiles.juan.name=o.names.tyo||'JuAn';d.profiles.annie.name=o.names.istri||'AnNie'}
@@ -618,7 +630,7 @@ function save(){try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){toast(
 // Pembaruan data lama: tambah gambar & area tubuh ke gerakan bawaan, pindahkan catatan air bike ke Pemanasan
 function upgrade(d){
   const sc=d.schema||0;
-  if(sc>=5)return false;
+  if(sc>=6)return false;
   if(sc<3){
     const OLD_WU='Pemanasan: ~5 menit sepeda statis (air bike), seperti kebiasaan lama, sebelum mulai set kerja di bawah.';
     Object.values(d.profiles).forEach(p=>{
@@ -641,7 +653,12 @@ function upgrade(d){
   const np={};order.forEach(k=>np[k]=d.profiles[k]);d.profiles=np;
   // tanggal akhir langganan gym JuAn & AnNie (untuk saringan alat default di katalog)
   ['juan','annie'].forEach(k=>{if(d.profiles[k]&&d.profiles[k].gymUntil===undefined)d.profiles[k].gymUntil='2027-01-12'});
-  d.schema=5;return true;
+  // schema 6: pemanasan kardio per profil (AnNie ya, lainnya tidak) + susunan 3 pemanasan/3 pendinginan
+  Object.values(d.profiles).forEach(p=>{
+    if(p.warmCardio===undefined)p.warmCardio=(p.id==='annie');
+    confirmAll(p);
+  });
+  d.schema=6;return true;
 }
 if(upgrade(db))justMigrated=true;
 if(justMigrated)save();
@@ -857,6 +874,13 @@ function exCard(profile,lg,itDef,idx){
       ${stepper('r_'+id,ex.unit==='reps'?'Repetisi':(ex.unit==='m'?'Jarak (m)':'Waktu (detik)'),rv,ex.unit==='reps'?1:5,'r')}
     </div>
     <button class="btn plate" data-action="logset" data-ex="${id}" data-rest="${itDef.rest}">${logged.length>=itDef.sets?'Catat set tambahan':'Catat set '+(logged.length+1)+' dari '+itDef.sets}</button>
+    <details class="notes" ${subAttr('u:'+id,false)}><summary>Satuan beban: ${esc(ex.loadLabel)}</summary>
+      <label>Pilih satuan (berlaku untuk gerakan ini seterusnya)</label>
+      <select data-loadpick data-ex="${id}" aria-label="Pilih satuan beban">${LOAD_PRESETS.map(x=>`<option value="${esc(x.v)}" ${x.v===ex.loadLabel?'selected':''}>${esc(x.t)}</option>`).join('')}<option value="__custom" ${LOAD_PRESETS.some(x=>x.v===ex.loadLabel)?'':'selected'}>Lainnya (ketik sendiri)</option></select>
+      <label for="ul_${id}">Atau ketik satuan sendiri</label>
+      <input type="text" id="ul_${id}" data-unitcustom data-ex="${id}" value="${esc(ex.loadLabel)}" placeholder="misal: level, lb">
+      <p class="tagline">Angka lama di riwayat tidak dikonversi. Kenaikan dan langkah ± bisa diatur di Program.</p>
+    </details>
     <details class="notes" ${subAttr('n:'+id,false)}><summary>Catatan${ex.note||sNote?' ●':''}</summary>
       <label for="np_${id}">Catatan tetap (selalu tampil di gerakan ini)</label>
       <textarea id="np_${id}" data-note="perm" data-ex="${id}" placeholder="Misal: posisi kursi nomor 4, pegangan netral">${esc(ex.note||'')}</textarea>
@@ -1052,7 +1076,7 @@ function programExercises(profile){
       <div class="formgrid">
         <div class="field"><label>Nama gerakan</label><input type="text" data-f="name" value="${esc(ex.name)}"></div>
         <div class="field"><label>Satuan hitungan</label><select data-f="unit"><option value="reps" ${ex.unit==='reps'?'selected':''}>Repetisi</option><option value="m" ${ex.unit==='m'?'selected':''}>Jarak (m)</option><option value="s" ${ex.unit==='s'?'selected':''}>Waktu (detik)</option></select></div>
-        <div class="field"><label>Label beban</label><input type="text" data-f="loadLabel" value="${esc(ex.loadLabel)}" placeholder="kg / dumbbell, bar, dll"></div>
+        <div class="field"><label>Satuan beban</label>${loadPick(ex.loadLabel)}<input type="text" data-f="loadLabel" value="${esc(ex.loadLabel)}" placeholder="Ketik satuan sendiri, misal: level, lb" style="margin-top:6px"></div>
         <div class="field"><label>Kenaikan beban saat penuh</label><input type="number" step="0.5" data-f="inc" value="${ex.inc}"></div>
         <div class="field"><label>Langkah tombol +/-</label><input type="number" step="0.5" data-f="step" value="${ex.step}"></div>
         <div class="field"><label>Batas repetisi keras (opsional)</label><input type="number" data-f="capReps" value="${ex.capReps??''}" placeholder="kosongkan jika tidak ada"></div>
@@ -1082,7 +1106,7 @@ function programExercises(profile){
         <div class="field"><label>Area tubuh (untuk pemanasan)</label>${regionSelect('id="newExRegion"','')}</div>
         <div class="field"><label>Nama gerakan</label><input type="text" id="newExName" placeholder="Misal: Dumbbell curl"></div>
         <div class="field"><label>Satuan hitungan</label><select id="newExUnit"><option value="reps">Repetisi</option><option value="m">Jarak (m)</option><option value="s">Waktu (detik)</option></select></div>
-        <div class="field"><label>Label beban</label><input type="text" id="newExLoadLabel" placeholder="kg / dumbbell" value="kg"></div>
+        <div class="field"><label>Satuan beban</label>${loadPick('kg')}<input type="text" id="newExLoadLabel" placeholder="Ketik satuan sendiri, misal: level, lb" value="kg" style="margin-top:6px"></div>
         <div class="field"><label>Kenaikan beban saat penuh</label><input type="number" step="0.5" id="newExInc" value="2.5"></div>
         <div class="field"><label>Langkah tombol +/-</label><input type="number" step="0.5" id="newExStep" value="1"></div>
       </div>
@@ -1187,6 +1211,8 @@ function renderData(){
   <section class="card"><h2>Pengaturan profil aktif: ${esc(curProfile().name)}</h2>
     <div class="field"><label for="ceil">Batas untuk proyeksi (dalam satuan beban gerakan, misal kg)</label><input type="number" id="ceil" inputmode="decimal" value="${curProfile().ceiling}"></div>
     <label class="check"><input type="checkbox" id="painIn2" ${curProfile().painTracking?'checked':''}> Lacak skor nyeri sendi untuk profil ini</label>
+    <label class="check"><input type="checkbox" id="cardioIn2" ${curProfile().warmCardio?'checked':''}> Pemanasan diawali kardio ringan (Air Bike / sepeda statis)</label>
+    <p class="cue">Kalau dimatikan, ketiga pemanasan berupa peregangan dan mobilitas.</p>
     <button class="btn" data-action="saveProfileSet">Simpan</button></section>
   <section class="card"><h2>Pengaturan umum</h2>
     <label class="row" style="margin:10px 0"><input type="checkbox" id="wakeIn" ${db.wake?'checked':''}> <span>Layar tetap menyala saat app terbuka (supaya bunyi timer tidak tertahan)</span></label>
@@ -1310,7 +1336,9 @@ document.addEventListener('click',e=>{
   else if(a==='saveSet'){db.wake=document.getElementById('wakeIn').checked;save();applyWake();toast('Pengaturan disimpan.');render()}
   else if(a==='saveProfileSet'){
     const c=num(document.getElementById('ceil').value);if(c>0)profile.ceiling=c;
-    profile.painTracking=document.getElementById('painIn2').checked;save();toast('Pengaturan profil disimpan.');render()}
+    profile.painTracking=document.getElementById('painIn2').checked;
+    profile.warmCardio=document.getElementById('cardioIn2').checked;
+    confirmAll(profile);save();toast('Pengaturan profil disimpan.');render()}
   else if(a==='testBeep'){audioUnlock();beep()}
   else if(a==='reset'){if(confirm('Hapus SEMUA data (semua profil, gerakan, dan riwayat)?')&&confirm('Yakin? Data yang belum dicadangkan akan hilang permanen.')){db=blank();ui.profileId=db.activeProfile;ui.sess=defSess(curProfile(),ui.date);save();render()}}
   /* ---- Program: profil ---- */
@@ -1350,8 +1378,11 @@ document.addEventListener('click',e=>{
   else if(a==='saveExercise'){
     const id=b.dataset.id,box=b.closest('details');
     const f=readForm(box);
+    const oldL=profile.exercises[id].loadLabel;
+    if(!String(f.loadLabel||'').trim())f.loadLabel='kg';
     profile.exercises[id]=Object.assign(profile.exercises[id],f);
-    save();toast('Gerakan disimpan.');render();
+    const hasHist=db.logs.some(l=>l.profileId===profile.id&&l.entries[id]&&l.entries[id].length);
+    save();toast(oldL!==f.loadLabel&&hasHist?'Satuan diganti. Angka lama di riwayat tidak dikonversi.':'Gerakan disimpan.');render();
   }
   else if(a==='delExercise'){
     const id=b.dataset.id;
@@ -1446,6 +1477,25 @@ document.addEventListener('input',e=>{
 });
 document.addEventListener('change',e=>{
   const t=e.target;
+  if(t.dataset&&t.dataset.ex&&(t.dataset.loadpick!==undefined||t.dataset.unitcustom!==undefined)){
+    const profile=curProfile(),ex=profile.exercises[t.dataset.ex];if(!ex)return;
+    const old=ex.loadLabel;
+    if(t.dataset.unitcustom!==undefined){ex.loadLabel=t.value.trim()||'kg'}
+    else if(t.value==='__custom'){document.getElementById('ul_'+t.dataset.ex).focus();return}
+    else{const pr=LOAD_PRESETS.find(x=>x.v===t.value);ex.loadLabel=t.value;if(pr){ex.inc=pr.inc;ex.step=pr.step}}
+    const hist=db.logs.some(l=>l.profileId===profile.id&&l.entries[t.dataset.ex]&&l.entries[t.dataset.ex].length);
+    save();ui.subs=ui.subs||{};ui.subs['u:'+t.dataset.ex]=true;
+    toast(old!==ex.loadLabel&&hist?'Satuan diganti. Angka lama tidak dikonversi.':'Satuan disimpan.');render();return;
+  }
+  if(t.dataset&&t.dataset.loadpick!==undefined){
+    const g=t.closest('.formgrid')||document;
+    const lab=g.querySelector('[data-f="loadLabel"],#newExLoadLabel');
+    if(t.value==='__custom'){lab.value='';lab.focus();return}
+    const pr=LOAD_PRESETS.find(x=>x.v===t.value);lab.value=t.value;
+    const inc=g.querySelector('[data-f="inc"],#newExInc'),st=g.querySelector('[data-f="step"],#newExStep');
+    if(pr&&inc)inc.value=pr.inc;if(pr&&st)st.value=pr.step;
+    toast('Kenaikan dan langkah disesuaikan. Bisa diubah lagi.');return;
+  }
   if(t.dataset&&t.dataset.note){
     const profile=curProfile(),exId=t.dataset.ex,v=t.value.trim();
     if(t.dataset.note==='perm'){
